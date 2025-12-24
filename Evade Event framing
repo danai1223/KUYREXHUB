@@ -1,15 +1,26 @@
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
-player.CharacterAdded:Connect(function(c) character = c end)
+local PlayerGui = player:WaitForChild("PlayerGui")
 
-local Fluent = loadstring(game:HttpGet(
-	"https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"
-))()
+pcall(function()
+	local g = PlayerGui:FindFirstChild("FluentGui")
+	if g then g:Destroy() end
+end)
+
+pcall(function()
+	local g = PlayerGui:FindFirstChild("FluentFloatingUI")
+	if g then g:Destroy() end
+end)
+
+local character = player.Character or player.CharacterAdded:Wait()
+player.CharacterAdded:Connect(function(c)
+	character = c
+end)
+
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 
 local Window = Fluent:CreateWindow({
 	Title = "KUYREX HUB " .. Fluent.Version,
@@ -25,30 +36,27 @@ local Tabs = {
 	Main = Window:AddTab({ Title = "หน้าหลัก", Icon = "house" })
 }
 
--- ===== Flags (ชื่อเดิม) =====
-local AutoTween = false
-local AutoTP = false
+Window:SelectTab(1)
+
+local AutoFarmTP = false
 local AutoStartGame = false
+local Busy = false
 
--- ===== Safe Point =====
-local SAFE_PART = Instance.new("Part")
-SAFE_PART.Size = Vector3.new(30, 2, 30)
-SAFE_PART.Anchored = true
-SAFE_PART.CanCollide = true
-SAFE_PART.Transparency = 1
-SAFE_PART.Position = Vector3.new(0, -450, 0)
-SAFE_PART.Parent = workspace
+local WAIT_CFRAME = CFrame.new(0, 5000, 0)
 
--- ===== Utils =====
+local function Teleport(cf)
+	if character then
+		character:PivotTo(cf)
+	end
+end
+
 local function GetTickets()
 	local folder = workspace:FindFirstChild("Game")
 		and workspace.Game:FindFirstChild("Effects")
 		and workspace.Game.Effects:FindFirstChild("Tickets")
-
 	if not folder then return {} end
-
 	local list = {}
-	for _,v in pairs(folder:GetChildren()) do
+	for _,v in ipairs(folder:GetChildren()) do
 		if v:IsA("BasePart") then
 			table.insert(list, v)
 		elseif v:IsA("Model") and v.PrimaryPart then
@@ -58,52 +66,39 @@ local function GetTickets()
 	return list
 end
 
-local function TeleportTo(cf)
-	if character then
-		character:PivotTo(cf)
-	end
-end
-
--- ===== Core Logic (กันเด้งด้วยการวาปซ้ำเฉพาะตอนเก็บ) =====
-local Busy = false
-
 task.spawn(function()
 	while true do
-		if (AutoTween or AutoTP) and not Busy and character then
+		if AutoFarmTP and character and not Busy then
 			local items = GetTickets()
-
 			if #items > 0 then
 				Busy = true
-
 				for _,item in ipairs(items) do
-					if not (AutoTween or AutoTP) then break end
+					if not AutoFarmTP then break end
 					if item and item.Parent then
-
-						-- วาปไปครั้งแรก
-						TeleportTo(item.CFrame)
-
-						-- ระหว่างรอให้หาย → วาปซ้ำกันกระเด็น
-						while item.Parent and (AutoTween or AutoTP) do
-							TeleportTo(item.CFrame)
-							task.wait(0.05) -- เบา ไม่หน่วง ไม่แลค
+						while item.Parent and AutoFarmTP do
+							Teleport(item.CFrame)
+							task.wait(0.05)
 						end
 					end
 				end
-
-				-- เช็คว่าหมดจริงแล้วค่อยไปจุดรอ
-				task.wait(0.1)
-				if #GetTickets() == 0 and (AutoTween or AutoTP) then
-					TeleportTo(SAFE_PART.CFrame)
-				end
-
 				Busy = false
+			else
+				Teleport(WAIT_CFRAME)
 			end
 		end
 		task.wait(0.12)
 	end
 end)
 
--- ===== Auto Start Game (เดิม) =====
+task.spawn(function()
+	while true do
+		if AutoFarmTP and character and not Busy and #GetTickets() == 0 then
+			Teleport(WAIT_CFRAME)
+		end
+		task.wait(1.5)
+	end
+end)
+
 local ChangeModeEvent = ReplicatedStorage
 	:WaitForChild("Events")
 	:WaitForChild("Player")
@@ -120,25 +115,15 @@ task.spawn(function()
 				end)
 			end
 		end
-		task.wait(0.25)
+		task.wait(2)
 	end
 end)
 
--- ===== Toggles (ชื่อเดิมทั้งหมด) =====
-Tabs.Main:AddToggle("AutoTweenTickets", {
-	Title = "Auto Tickets Tween ✅",
-	Default = false
-}):OnChanged(function(v)
-	AutoTween = v
-	if v then AutoTP = false end
-end)
-
 Tabs.Main:AddToggle("AutoTicketsTP", {
-	Title = "Auto Tickets Tp ✅",
+	Title = "ฟาร์มเหรียญอีเว้นท์ ✅",
 	Default = false
 }):OnChanged(function(v)
-	AutoTP = v
-	if v then AutoTween = false end
+	AutoFarmTP = v
 end)
 
 Tabs.Main:AddToggle("AutoStartGame", {
@@ -148,8 +133,6 @@ Tabs.Main:AddToggle("AutoStartGame", {
 	AutoStartGame = v
 end)
 
--- ===== Floating Button (เดิม) =====
-local PlayerGui = player:WaitForChild("PlayerGui")
 local gui = Instance.new("ScreenGui", PlayerGui)
 gui.Name = "FluentFloatingUI"
 gui.ResetOnSpawn = false
@@ -164,19 +147,16 @@ button.TextScaled = true
 button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 button.TextColor3 = Color3.fromRGB(255, 255, 255)
 button.BorderSizePixel = 0
-
 Instance.new("UICorner", button).CornerRadius = UDim.new(0, 12)
 
 button.MouseButton1Click:Connect(function()
 	Window:Minimize()
 end)
 
--- ===== Drag =====
 local dragging, dragStart, startPos = false
 
 button.InputBegan:Connect(function(i)
-	if i.UserInputType == Enum.UserInputType.MouseButton1
-	or i.UserInputType == Enum.UserInputType.Touch then
+	if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
 		dragging = true
 		dragStart = i.Position
 		startPos = button.Position
@@ -189,8 +169,7 @@ button.InputBegan:Connect(function(i)
 end)
 
 UserInputService.InputChanged:Connect(function(i)
-	if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement
-	or i.UserInputType == Enum.UserInputType.Touch) then
+	if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
 		local d = i.Position - dragStart
 		button.Position = UDim2.new(
 			startPos.X.Scale,
@@ -203,8 +182,6 @@ end)
 
 Fluent:Notify({
 	Title = "พร้อมแล้ว",
-	Content = "Loaded",
+	Content = "ควยสัส",
 	Duration = 3
 })
-
-Window:SelectTab(1)
