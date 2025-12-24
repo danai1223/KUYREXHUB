@@ -46,22 +46,23 @@ Window:SelectTab(1)
 
 local AutoFarmTP = false
 local AutoStartGame = false
-local AutoDodgeNextbot = false
 local Busy = false
-local AtWaiting = false
+local InWait = false
 
 -- ===== จุดรอ (ยืนได้ ไม่ตก) =====
 local WAIT_PART = Instance.new("Part")
-WAIT_PART.Size = Vector3.new(40, 2, 40)
+WAIT_PART.Size = Vector3.new(20, 2, 20)
 WAIT_PART.Anchored = true
 WAIT_PART.CanCollide = true
-WAIT_PART.Transparency = 0
+WAIT_PART.Transparency = 1
 WAIT_PART.CFrame = CFrame.new(0, 520, 0)
 WAIT_PART.Parent = workspace
 
 local function Teleport(cf)
 	if character and hrp then
 		character:PivotTo(cf)
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.AssemblyAngularVelocity = Vector3.zero
 	end
 end
 
@@ -71,76 +72,49 @@ local function GetTickets()
 		and workspace.Game:FindFirstChild("Effects")
 		and workspace.Game.Effects:FindFirstChild("Tickets")
 	if not folder then return {} end
-
 	local list = {}
 	for _,v in ipairs(folder:GetChildren()) do
 		if v:IsA("BasePart") then
 			table.insert(list, v)
-		elseif v:IsA("Model") then
-			local p = v:FindFirstChildWhichIsA("BasePart", true)
-			if p then table.insert(list, p) end
+		elseif v:IsA("Model") and v.PrimaryPart then
+			table.insert(list, v.PrimaryPart)
 		end
 	end
 	return list
 end
 
--- ===== หา NextBot (เวอร์ชันที่เจอจริง) =====
-local function GetNearestNextbot()
-	local folder = workspace:FindFirstChild("Game") and workspace.Game:FindFirstChild("Players")
-	if not folder or not hrp then return nil, math.huge end
-
-	local nearest, dist = nil, math.huge
-
-	for _,v in ipairs(folder:GetChildren()) do
-		local idle = v:FindFirstChild("Idle", true)
-		if idle and idle:IsA("Sound") then
-			local part =
-				v:FindFirstChild("HumanoidRootPart")
-				or v:FindFirstChild("Root")
-				or v:FindFirstChild("Head")
-				or v:FindFirstChildWhichIsA("BasePart", true)
-
-			if part then
-				local d = (part.Position - hrp.Position).Magnitude
-				if d < dist then
-					dist = d
-					nearest = part
-				end
-			end
-		end
-	end
-
-	return nearest, dist
-end
-
--- ===== ฟาร์มเหรียญ =====
+-- ===== ฟาร์มเหรียญ (วาปครั้งเดียวต่อเหรียญ) =====
 task.spawn(function()
 	while true do
-		if AutoFarmTP and not Busy then
+		if AutoFarmTP and character and not Busy then
 			local items = GetTickets()
 			if #items > 0 then
 				Busy = true
-				AtWaiting = false
+				InWait = false
 				for _,item in ipairs(items) do
 					if not AutoFarmTP then break end
-					while item and item.Parent and AutoFarmTP do
+					if item and item.Parent then
 						Teleport(item.CFrame)
-						task.wait(0.05)
+
+						local t = tick()
+						while item.Parent and AutoFarmTP and tick() - t < 1.5 do
+							task.wait(0.05)
+						end
 					end
 				end
 				Busy = false
 			else
-				if not AtWaiting then
-					AtWaiting = true
-					Teleport(WAIT_PART.CFrame + Vector3.new(0,4,0))
+				if not InWait then
+					InWait = true
+					Teleport(WAIT_PART.CFrame + Vector3.new(0, 3, 0))
 				end
 			end
 		end
-		task.wait(0.12)
+		task.wait(0.15)
 	end
 end)
 
--- ===== Auto Start Game (เช็คจริง ไม่รัวมั่ว) =====
+-- ===== Auto Start Game =====
 local ChangeModeEvent = ReplicatedStorage
 	:WaitForChild("Events")
 	:WaitForChild("Player")
@@ -161,36 +135,16 @@ task.spawn(function()
 	end
 end)
 
--- ===== หลบ NextBot =====
-RunService.Heartbeat:Connect(function()
-	if not AutoDodgeNextbot or not hrp then return end
-
-	local bot, dist = GetNearestNextbot()
-	if bot and dist < 28 then
-		local dir = (hrp.Position - bot.Position).Unit
-		local offset = Vector3.new(
-			math.random(-30,30),
-			0,
-			math.random(-30,30)
-		)
-		local target = hrp.Position + dir * 22 + offset
-		hrp.CFrame = CFrame.new(target)
-	end
-end)
-
--- ===== UI =====
+-- ===== Toggles =====
 Tabs.Main:AddToggle("AutoTicketsTP", {
 	Title = "ฟาร์มเหรียญอีเว้นท์ ✅",
 	Default = false
 }):OnChanged(function(v)
 	AutoFarmTP = v
-end)
-
-Tabs.Main:AddToggle("AutoDodgeNextbot", {
-	Title = "หลบNextBotอัติโนมัติ ✅",
-	Default = false
-}):OnChanged(function(v)
-	AutoDodgeNextbot = v
+	if not v then
+		Busy = false
+		InWait = false
+	end
 end)
 
 Tabs.Main:AddToggle("AutoStartGame", {
@@ -200,7 +154,7 @@ Tabs.Main:AddToggle("AutoStartGame", {
 	AutoStartGame = v
 end)
 
--- ===== ปุ่มลอย =====
+-- ===== Floating Button =====
 local gui = Instance.new("ScreenGui", PlayerGui)
 gui.Name = "FluentFloatingUI"
 gui.ResetOnSpawn = false
@@ -215,7 +169,7 @@ button.TextScaled = true
 button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 button.TextColor3 = Color3.fromRGB(255, 255, 255)
 button.BorderSizePixel = 0
-Instance.new("UICorner", button)
+Instance.new("UICorner", button).CornerRadius = UDim.new(0, 12)
 
 button.MouseButton1Click:Connect(function()
 	Window:Minimize()
@@ -237,7 +191,7 @@ button.InputBegan:Connect(function(i)
 end)
 
 UserInputService.InputChanged:Connect(function(i)
-	if dragging then
+	if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
 		local d = i.Position - dragStart
 		button.Position = UDim2.new(
 			startPos.X.Scale,
@@ -250,6 +204,6 @@ end)
 
 Fluent:Notify({
 	Title = "พร้อมแล้ว",
-	Content = "ระบบทำงานครบ",
-	Duration = 3
+	Content = "CHAT GPTรับจบ",
+	Duration = 2
 })
