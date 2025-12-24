@@ -1,0 +1,223 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+player.CharacterAdded:Connect(function(c) character = c end)
+
+local Fluent = loadstring(game:HttpGet(
+	"https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"
+))()
+
+local Window = Fluent:CreateWindow({
+	Title = "KUYREX HUB " .. Fluent.Version,
+	SubTitle = "evade x Kuyrex",
+	TabWidth = 160,
+	Size = UDim2.fromOffset(500, 300),
+	Acrylic = true,
+	Theme = "Dark",
+	MinimizeKey = Enum.KeyCode.LeftControl
+})
+
+local Tabs = {
+	Main = Window:AddTab({ Title = "หน้าหลัก", Icon = "house" })
+}
+
+-- ===== Flags (ชื่อเดิมทั้งหมด) =====
+local AutoTween = false
+local AutoTP = false
+local AutoStartGame = false
+
+-- ===== Safe Point =====
+local SAFE_PART = Instance.new("Part")
+SAFE_PART.Size = Vector3.new(30, 2, 30)
+SAFE_PART.Anchored = true
+SAFE_PART.CanCollide = true
+SAFE_PART.Transparency = 1
+SAFE_PART.Position = Vector3.new(0, -450, 0)
+SAFE_PART.Parent = workspace
+
+-- ===== Utils =====
+local function GetTickets()
+	local folder = workspace:FindFirstChild("Game")
+		and workspace.Game:FindFirstChild("Effects")
+		and workspace.Game.Effects:FindFirstChild("Tickets")
+
+	if not folder then return {} end
+
+	local list = {}
+	for _,v in pairs(folder:GetChildren()) do
+		if v:IsA("BasePart") then
+			table.insert(list, v)
+		elseif v:IsA("Model") and v.PrimaryPart then
+			table.insert(list, v.PrimaryPart)
+		end
+	end
+	return list
+end
+
+local function TweenTo(cf)
+	if not character then return end
+	local start = character:GetPivot()
+	local t0 = tick()
+	while tick() - t0 < 0.1 do
+		local a = (tick() - t0) / 0.1
+		character:PivotTo(start:Lerp(cf, a))
+		RunService.Heartbeat:Wait()
+	end
+	character:PivotTo(cf)
+end
+
+local function TeleportTo(cf)
+	if character then
+		character:PivotTo(cf)
+	end
+end
+
+-- ===== Core Logic (เก็บทีละอันจริง) =====
+local Busy = false
+
+task.spawn(function()
+	while true do
+		if (AutoTween or AutoTP) and not Busy and character then
+			local items = GetTickets()
+
+			if #items > 0 then
+				Busy = true
+
+				for _,item in ipairs(items) do
+					if not (AutoTween or AutoTP) then break end
+					if item and item.Parent then
+						if AutoTween then
+							TweenTo(item.CFrame)
+						else
+							TeleportTo(item.CFrame)
+						end
+
+						-- รอจนของชิ้นนี้ "หายจริง"
+						repeat
+							task.wait(0.05)
+						until not item.Parent or not (AutoTween or AutoTP)
+					end
+				end
+
+				-- เช็คซ้ำว่าหมดจริง
+				task.wait(0.1)
+				if #GetTickets() == 0 and (AutoTween or AutoTP) then
+					TeleportTo(SAFE_PART.CFrame)
+				end
+
+				Busy = false
+			end
+		end
+		task.wait(0.15)
+	end
+end)
+
+-- ===== Auto Start Game (ชื่อเดิม) =====
+local ChangeModeEvent = ReplicatedStorage
+	:WaitForChild("Events")
+	:WaitForChild("Player")
+	:WaitForChild("ChangePlayerMode")
+
+task.spawn(function()
+	while true do
+		if AutoStartGame then
+			local gp = workspace:FindFirstChild("Game")
+			local pf = gp and gp:FindFirstChild("Players")
+			if pf and not pf:FindFirstChild(player.Name) then
+				pcall(function()
+					ChangeModeEvent:FireServer(true)
+				end)
+			end
+		end
+		task.wait(0.25)
+	end
+end)
+
+-- ===== Toggles (ชื่อเดิมทั้งหมด) =====
+Tabs.Main:AddToggle("AutoTweenTickets", {
+	Title = "Auto Tickets Tween ✅",
+	Default = false
+}):OnChanged(function(v)
+	AutoTween = v
+	if v then AutoTP = false end
+end)
+
+Tabs.Main:AddToggle("AutoTicketsTP", {
+	Title = "Auto Tickets Tp ✅",
+	Default = false
+}):OnChanged(function(v)
+	AutoTP = v
+	if v then AutoTween = false end
+end)
+
+Tabs.Main:AddToggle("AutoStartGame", {
+	Title = "เริ่มเกมอัตโนมัติ ✅",
+	Default = false
+}):OnChanged(function(v)
+	AutoStartGame = v
+end)
+
+-- ===== Floating Button (เดิม) =====
+local PlayerGui = player:WaitForChild("PlayerGui")
+local gui = Instance.new("ScreenGui", PlayerGui)
+gui.Name = "FluentFloatingUI"
+gui.ResetOnSpawn = false
+
+local button = Instance.new("TextButton", gui)
+button.Size = UDim2.new(0, 52, 0, 52)
+button.Position = UDim2.new(0, 15, 0.5, 0)
+button.AnchorPoint = Vector2.new(0, 0.5)
+button.Text = "กดเปิด"
+button.Font = Enum.Font.GothamBold
+button.TextScaled = true
+button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+button.TextColor3 = Color3.fromRGB(255, 255, 255)
+button.BorderSizePixel = 0
+
+Instance.new("UICorner", button).CornerRadius = UDim.new(0, 12)
+
+button.MouseButton1Click:Connect(function()
+	Window:Minimize()
+end)
+
+-- ===== Drag =====
+local dragging, dragStart, startPos = false
+
+button.InputBegan:Connect(function(i)
+	if i.UserInputType == Enum.UserInputType.MouseButton1
+	or i.UserInputType == Enum.UserInputType.Touch then
+		dragging = true
+		dragStart = i.Position
+		startPos = button.Position
+		i.Changed:Connect(function()
+			if i.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(i)
+	if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement
+	or i.UserInputType == Enum.UserInputType.Touch) then
+		local d = i.Position - dragStart
+		button.Position = UDim2.new(
+			startPos.X.Scale,
+			startPos.X.Offset + d.X,
+			startPos.Y.Scale,
+			startPos.Y.Offset + d.Y
+		)
+	end
+end)
+
+Fluent:Notify({
+	Title = "พร้อมแล้ว😝",
+	Content = "Loaded",
+	Duration = 3
+})
+
+Window:SelectTab(1)
