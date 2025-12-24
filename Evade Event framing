@@ -24,7 +24,9 @@ player.CharacterAdded:Connect(function(c)
 	hrp = c:WaitForChild("HumanoidRootPart")
 end)
 
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+local Fluent = loadstring(game:HttpGet(
+	"https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"
+))()
 
 local Window = Fluent:CreateWindow({
 	Title = "KUYREX HUB " .. Fluent.Version,
@@ -46,22 +48,27 @@ local AutoFarmTP = false
 local AutoStartGame = false
 local AutoDodgeNextbot = false
 local Busy = false
+local InWait = false
 
--- Part สำหรับยืนตอนรอ
+-- ===== จุดรอ (ยืนได้ ไม่ตก) =====
 local WAIT_PART = Instance.new("Part")
-WAIT_PART.Size = Vector3.new(6,1,6)
+WAIT_PART.Size = Vector3.new(20, 2, 20)
 WAIT_PART.Anchored = true
 WAIT_PART.CanCollide = true
 WAIT_PART.Transparency = 1
 WAIT_PART.CFrame = CFrame.new(0, 520, 0)
 WAIT_PART.Parent = workspace
 
+-- ===== ฟังก์ชัน Teleport =====
 local function Teleport(cf)
-	if character then
+	if character and hrp then
 		character:PivotTo(cf)
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hrp.AssemblyAngularVelocity = Vector3.zero
 	end
 end
 
+-- ===== หาเหรียญ =====
 local function GetTickets()
 	local folder = workspace:FindFirstChild("Game")
 		and workspace.Game:FindFirstChild("Effects")
@@ -78,6 +85,7 @@ local function GetTickets()
 	return list
 end
 
+-- ===== ฟังก์ชันหา NextBot =====
 local function GetNearestNextbot()
 	local folder = workspace:FindFirstChild("Game") and workspace.Game:FindFirstChild("Players")
 	if not folder then return nil, math.huge end
@@ -95,31 +103,37 @@ local function GetNearestNextbot()
 	return nearest, dist
 end
 
--- วาปเก็บเหรียญ (วาปครั้งเดียว)
+-- ===== ฟาร์มเหรียญ (วาปครั้งเดียวต่อเหรียญ) =====
 task.spawn(function()
 	while true do
 		if AutoFarmTP and character and not Busy then
 			local items = GetTickets()
 			if #items > 0 then
 				Busy = true
+				InWait = false
 				for _,item in ipairs(items) do
 					if not AutoFarmTP then break end
 					if item and item.Parent then
 						Teleport(item.CFrame)
-						-- รอให้เก็บเสร็จ
-						repeat task.wait(0.1) until not item.Parent or not AutoFarmTP
+						local t = tick()
+						while item.Parent and AutoFarmTP and tick() - t < 1.5 do
+							task.wait(0.05)
+						end
 					end
 				end
 				Busy = false
 			else
-				Teleport(WAIT_PART.CFrame + Vector3.new(0,3,0))
+				if not InWait then
+					InWait = true
+					Teleport(WAIT_PART.CFrame + Vector3.new(0, 3, 0))
+				end
 			end
 		end
-		task.wait(0.12)
+		task.wait(0.15)
 	end
 end)
 
--- เริ่มเกมอัตโนมัติ
+-- ===== Auto Start Game =====
 local ChangeModeEvent = ReplicatedStorage
 	:WaitForChild("Events")
 	:WaitForChild("Player")
@@ -140,26 +154,29 @@ task.spawn(function()
 	end
 end)
 
--- ระบบหลบ NextBot
+-- ===== หลบ NextBot =====
 RunService.Heartbeat:Connect(function()
 	if not AutoDodgeNextbot or not hrp then return end
 	local bot, dist = GetNearestNextbot()
-	if bot and dist < 25 then
-		-- สุ่มตำแหน่งหลบใน map
-		local mapSize = Vector3.new(200,0,200) -- ปรับตาม map
-		local randX = math.random(-mapSize.X/2,mapSize.X/2)
-		local randZ = math.random(-mapSize.Z/2,mapSize.Z/2)
-		local safePos = Vector3.new(randX, WAIT_PART.Position.Y + 3, randZ)
-		hrp.CFrame = CFrame.new(safePos)
+	if bot and dist < 32 then
+		-- สุ่มวาปหนีรอบ ๆ แมพ (สูงหน่อย ไม่ตก)
+		local randomX = math.random(-30, 30)
+		local randomZ = math.random(-30, 30)
+		local safePos = WAIT_PART.Position + Vector3.new(randomX, 5, randomZ)
+		Teleport(CFrame.new(safePos))
 	end
 end)
 
--- Toggle UI
+-- ===== Toggles =====
 Tabs.Main:AddToggle("AutoTicketsTP", {
 	Title = "ฟาร์มเหรียญอีเว้นท์ ✅",
 	Default = false
 }):OnChanged(function(v)
 	AutoFarmTP = v
+	if not v then
+		Busy = false
+		InWait = false
+	end
 end)
 
 Tabs.Main:AddToggle("AutoDodgeNextbot", {
@@ -176,7 +193,7 @@ Tabs.Main:AddToggle("AutoStartGame", {
 	AutoStartGame = v
 end)
 
--- UI Floating
+-- ===== Floating Button =====
 local gui = Instance.new("ScreenGui", PlayerGui)
 gui.Name = "FluentFloatingUI"
 gui.ResetOnSpawn = false
@@ -226,6 +243,6 @@ end)
 
 Fluent:Notify({
 	Title = "พร้อมแล้ว",
-	Content = "ควยไรสัส",
+	Content = "ฟาร์ม + หลบ NextBot ครบ Toggle",
 	Duration = 3
-})then
+})
