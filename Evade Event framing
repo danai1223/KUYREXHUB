@@ -25,7 +25,7 @@ local Tabs = {
 	Main = Window:AddTab({ Title = "หน้าหลัก", Icon = "house" })
 }
 
--- ===== Flags (ชื่อเดิมทั้งหมด) =====
+-- ===== Flags (ชื่อเดิม) =====
 local AutoTween = false
 local AutoTP = false
 local AutoStartGame = false
@@ -58,25 +58,13 @@ local function GetTickets()
 	return list
 end
 
-local function TweenTo(cf)
-	if not character then return end
-	local start = character:GetPivot()
-	local t0 = tick()
-	while tick() - t0 < 0.1 do
-		local a = (tick() - t0) / 0.1
-		character:PivotTo(start:Lerp(cf, a))
-		RunService.Heartbeat:Wait()
-	end
-	character:PivotTo(cf)
-end
-
 local function TeleportTo(cf)
 	if character then
 		character:PivotTo(cf)
 	end
 end
 
--- ===== Core Logic (เก็บทีละอันจริง) =====
+-- ===== Core Logic (กันเด้งด้วยการวาปซ้ำเฉพาะตอนเก็บ) =====
 local Busy = false
 
 task.spawn(function()
@@ -90,20 +78,19 @@ task.spawn(function()
 				for _,item in ipairs(items) do
 					if not (AutoTween or AutoTP) then break end
 					if item and item.Parent then
-						if AutoTween then
-							TweenTo(item.CFrame)
-						else
-							TeleportTo(item.CFrame)
-						end
 
-						-- รอจนของชิ้นนี้ "หายจริง"
-						repeat
-							task.wait(0.05)
-						until not item.Parent or not (AutoTween or AutoTP)
+						-- วาปไปครั้งแรก
+						TeleportTo(item.CFrame)
+
+						-- ระหว่างรอให้หาย → วาปซ้ำกันกระเด็น
+						while item.Parent and (AutoTween or AutoTP) do
+							TeleportTo(item.CFrame)
+							task.wait(0.05) -- เบา ไม่หน่วง ไม่แลค
+						end
 					end
 				end
 
-				-- เช็คซ้ำว่าหมดจริง
+				-- เช็คว่าหมดจริงแล้วค่อยไปจุดรอ
 				task.wait(0.1)
 				if #GetTickets() == 0 and (AutoTween or AutoTP) then
 					TeleportTo(SAFE_PART.CFrame)
@@ -112,11 +99,11 @@ task.spawn(function()
 				Busy = false
 			end
 		end
-		task.wait(0.15)
+		task.wait(0.12)
 	end
 end)
 
--- ===== Auto Start Game (ชื่อเดิม) =====
+-- ===== Auto Start Game (เดิม) =====
 local ChangeModeEvent = ReplicatedStorage
 	:WaitForChild("Events")
 	:WaitForChild("Player")
@@ -215,7 +202,7 @@ UserInputService.InputChanged:Connect(function(i)
 end)
 
 Fluent:Notify({
-	Title = "พร้อมแล้ว😝",
+	Title = "พร้อมแล้ว",
 	Content = "Loaded",
 	Duration = 3
 })
